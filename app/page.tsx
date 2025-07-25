@@ -149,18 +149,21 @@ const MeteorShower = React.memo(() => {
 
         const createMeteor = () => {
             const id = Date.now() + Math.random();
-            const x = Math.random() * window.innerWidth * 1.5;
-            const y = -50;
-            const length = Math.random() * 100 + 50;
-            const angle = Math.PI / 4;
-            const duration = Math.random() * 3 + 2;
-            setMeteors(prev => [...prev, { id, x, y, length, angle, duration }]);
+            // Start from top-right area, moving diagonally down-left
+            const x = Math.random() * window.innerWidth * 0.5 + window.innerWidth * 0.5;
+            const y = Math.random() * window.innerHeight * 0.3 - 100;
+            const length = Math.random() * 80 + 40;
+            // Angle pointing in direction of travel (down-left diagonal)
+            const angle = Math.PI * 0.75; // 135 degrees - pointing down-left
+            const duration = Math.random() * 2 + 1.5;
+            const speed = 0.8 + Math.random() * 0.4; // Variable speed
+            setMeteors(prev => [...prev, { id, x, y, length, angle, duration, speed }]);
             setTimeout(() => {
                 setMeteors(prev => prev.filter(m => m.id !== id));
             }, duration * 1000);
         };
 
-        const interval = setInterval(createMeteor, 2000);
+        const interval = setInterval(createMeteor, 1500);
         return () => clearInterval(interval);
     }, [shouldReduceMotion]);
 
@@ -174,8 +177,8 @@ const MeteorShower = React.memo(() => {
                         key={meteor.id}
                         initial={{ x: meteor.x, y: meteor.y, opacity: 1 }}
                         animate={{
-                            x: meteor.x - window.innerWidth,
-                            y: meteor.y + window.innerWidth,
+                            x: meteor.x - window.innerWidth * meteor.speed,
+                            y: meteor.y + window.innerHeight * meteor.speed,
                             opacity: 0
                         }}
                         transition={{ duration: meteor.duration, ease: "linear" }}
@@ -183,8 +186,9 @@ const MeteorShower = React.memo(() => {
                             position: 'absolute',
                             width: '2px',
                             height: `${meteor.length}px`,
-                            background: 'linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0))',
+                            background: 'linear-gradient(to bottom, rgba(255,255,255,0.9), rgba(255,255,255,0))',
                             transform: `rotate(${meteor.angle}rad)`,
+                            transformOrigin: 'top center'
                         }}
                     />
                 ))}
@@ -210,17 +214,27 @@ const TodoCard = React.memo(({ card, camera, onUpdate, onDelete, onPositionChang
     const [editLinks, setEditLinks] = useState(card.links || []);
     const [newLinkUrl, setNewLinkUrl] = useState("");
     const [newLinkLabel, setNewLinkLabel] = useState("");
+    const [isDragging, setIsDragging] = useState(false);
     const textColor = getContrastingTextColor(card.color);
     const shouldReduceMotion = useReducedMotion();
 
-    const handleDrag = useCallback((event: MouseEvent | TouchEvent | PointerEvent, info: any) => {
+    const handleDragStart = useCallback(() => {
         if (orbitMode) return;
+        setIsDragging(true);
+    }, [orbitMode]);
+
+    const handleDragEnd = useCallback(() => {
+        setIsDragging(false);
+    }, []);
+
+    const handleDrag = useCallback((event: MouseEvent | TouchEvent | PointerEvent, info: any) => {
+        if (orbitMode || !isDragging) return;
         const newPosition = {
             x: card.position.x + info.delta.x / camera.zoom,
             y: card.position.y + info.delta.y / camera.zoom,
         };
         onPositionChange(card.id, newPosition);
-    }, [orbitMode, card.position.x, card.position.y, camera.zoom, card.id, onPositionChange]);
+    }, [orbitMode, isDragging, card.position.x, card.position.y, camera.zoom, card.id, onPositionChange]);
     
     const handleSave = useCallback(() => {
         onUpdate(card.id, { 
@@ -280,14 +294,19 @@ const TodoCard = React.memo(({ card, camera, onUpdate, onDelete, onPositionChang
         <motion.div
             drag={!orbitMode}
             dragMomentum={false}
+            dragConstraints={false}
+            dragElastic={0}
+            dragTransition={{ power: 0, timeConstant: 0 }}
+            onDragStart={handleDragStart}
             onDrag={handleDrag}
-            animate={{...motionProps, scale: camera.zoom}}
-            transition={{ type: 'spring', stiffness: 500, damping: 50 }}
+            onDragEnd={handleDragEnd}
+            animate={isDragging ? {} : {...motionProps, scale: camera.zoom}}
+            transition={isDragging ? { duration: 0 } : { type: 'tween', duration: 0.1 }}
             style={{
                 position: 'absolute',
                 top: '50%',
                 left: '50%',
-                cursor: orbitMode ? 'default' : 'grab',
+                cursor: orbitMode ? 'default' : (isDragging ? 'grabbing' : 'grab'),
                 pointerEvents: 'auto'
             }}
             whileDrag={{ cursor: 'grabbing', zIndex: 10 }}
